@@ -1,6 +1,6 @@
-# A2A Estate - AI-Powered Real Estate Search Application
+# EriPick
 
-A2A Estate is an AI-powered real estate search application that supports efficient home searching, from property search to commute time calculation and AI-based property recommendations.
+EriPick  is an AI-powered real estate search application that supports efficient home searching, from property search to commute time calculation and AI-based property recommendations.
 
 ## Features
 
