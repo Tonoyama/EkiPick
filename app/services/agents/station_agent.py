@@ -33,7 +33,7 @@ def build_station_agent(session_service) -> CustomAgent:
 
 def build_multiple_pin_station_agent(session_service) -> CustomAgent:
     agent = LlmAgent(
-        model="gemini-2.0-flash-001",
+        model="gemini-2.5-flash",
         name="estate_suggestion",
         description=("駅表示エージェント"),
         include_contents="default",
