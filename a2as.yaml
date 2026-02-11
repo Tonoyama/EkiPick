@@ -1,0 +1,663 @@
+manifest:
+  version: "0.1.3"
+  schema: https://a2as.org/cert/schema
+  subject:
+    name: tonoyama/ekipick
+    source: https://github.com/tonoyama/ekipick
+    branch: main
+    commit: "252e28d2"
+    scope: [app/routers/chat.py, app/routers/commute.py, app/services/agents/advisor_agent.py, app/services/agents/custom_agent.py,
+      app/services/agents/estate_agent.py, app/services/agents/followup_agent.py, app/services/agents/hazard_agent.py, app/services/agents/report_agent.py,
+      app/services/agents/station_agent.py, app/services/agents/suggestion_agent.py, app/services/agents/summry_agent.py,
+      app/services/navitime.py, app/services/tools/check_hazard_info.py, app/services/tools/gemini_search.py, app/services/tools/get_latlon_from_address.py,
+      app/services/tools/get_nearby_buildings.py, app/services/tools/map_api.py, app/services/tools/reachable_station.py]
+  issued:
+    by: A2AS.org
+    at: '2026-02-11T16:58:08Z'
+    url: https://a2as.org/certified/agents/tonoyama/ekipick
+  signatures:
+    digest: sha256:kqAXr8ZEgF_hGXsS9_iDV8qHjg6S__E8AQ037Xtonjg
+    key: ed25519:Gj34NGYnxoSZqbfam1RqzMMw6B4yYUbx7FaXccMmcqM
+    sig: ed25519:z6GRjKkSOiFqmWS6AchsHmy9fjRWflpaambhewP5rpl1gJA1JH8Z7HXOP6L5ik-4izuvX5Aha5K_ZYGdU8J8DA
+
+agents:
+  advisor_agent:
+    type: instance
+    models: [gemini-2.0-flash-001]
+    params:
+      name: advisor_agent
+      description: アドバイザーエージェント
+      include_contents: default
+      instruction: ['[description]', '[workflow]']
+      function: build_advisor_agent
+      instance: agent
+  agent.0:
+    type: instance
+    models: [gemini-2.0-flash-001]
+    params:
+      name: build_followup_agent
+      description: 追加質問フォローアップエージェント
+      include_contents: default
+      instruction: ['[description]', '[ワークフロー]']
+      function: build_followup_agent
+      instance: agent
+  agent.1:
+    type: instance
+    models: [gemini-2.0-flash-001]
+    tools: [reachable_station, gemini_search]
+    params:
+      name: reachable_station_agent
+      description: 住む駅推薦エージェント
+      include_contents: default
+      instruction: ['[description]', '[ワークフロー]', 少々お待ちください。, '[Tasks]', '* tool reachable_station が失敗した場合、あなたは tool gemini_search
+          を必ず呼び出して回答します']
+      function: build_suggest_agent
+      instance: agent
+  agent.2:
+    type: instance
+    models: [gemini-2.0-flash-001]
+    tools: [get_station_coordinates]
+    params:
+      name: estate_suggestion
+      description: 駅表示エージェント
+      include_contents: default
+      instruction: ['[description]', '[Tasks]']
+      function: build_station_agent
+      instance: agent
+  agent.3:
+    type: instance
+    models: [gemini-2.5-flash]
+    tools: [get_station_coordinates]
+    params:
+      name: estate_suggestion
+      description: 駅表示エージェント
+      include_contents: default
+      instruction: ['[案内テンプレート]', '[Tasks]']
+      function: build_multiple_pin_station_agent
+      instance: agent
+  agent.4:
+    type: instance
+    models: [gemini-2.0-flash-001]
+    tools: [get_station_coordinates]
+    params:
+      name: report_agent
+      description: 駅周辺情報調査エージェント
+      include_contents: default
+      instruction: ['[description]', '貴方がやる唯一のことは、与えられた tool gemini_searchを用いて、入力にある{number}番目の駅についてを詳細情報を解説することです。', 'また、{number}番目の駅が入力に存在しない場合には、「出力無」とだけ記載してください',
+        '[ワークフロー]', '[Tasks]']
+      function: build_report_agent
+      instance: agent
+  agent.5:
+    type: instance
+    models: [gemini-2.0-flash-001]
+    tools: [get_latlon_from_address, get_nearby_buildings, gemini_search, hazard_agent]
+    params:
+      name: estate_suggestion
+      description: 不動産提案コンシェルジュエージェント
+      include_contents: default
+      instruction: ['[description]', '[ワークフロー]', '[Tasks]']
+      function: build_estate_agent
+      instance: agent
+      sub_agents: [advisor_agent, summary_agent]
+  agent.build_hazard_agent:
+    type: factory
+    models: [gemini-2.0-flash-001]
+    tools: [check_hazard_info]
+    params:
+      name: hazard_agent
+      description: 災害情報確認エージェント
+      include_contents: default
+      instruction: ['[description]', '[ワークフロー]', "...", '[Tasks]']
+      function: build_hazard_agent
+      instance: agent
+  summary_agent:
+    type: instance
+    models: [gemini-2.0-flash-001]
+    params:
+      name: summary_agent
+      description: サマリーエージェント
+      include_contents: default
+      instruction: ['[description]', '[workflow]', 会話レポートまとめ, 1. 今回の依頼内容]
+      function: build_summary_agent
+      instance: agent
+
+models:
+  gemini-2.0-flash-001:
+    type: literal
+    agents: [agent.0, advisor_agent, agent.1, agent.2, agent.4, summary_agent, agent.build_hazard_agent, agent.5]
+  gemini-2.5-flash:
+    type: literal
+    agents: [agent.3]
+
+tools:
+  check_hazard_info:
+    type: function
+    agents: [agent.build_hazard_agent]
+  gemini_search:
+    type: function
+    agents: [agent.1, agent.5]
+    params:
+      description: |-
+        クエリ情報から検索した結果を返却する関数
+
+        Args:
+            query: str
+                「新宿駅周辺はどのような街ですか？」
+                「赤坂見附は一般人が住むのに適している街でしょうか？」
+        Returns:
+            str: 回答結果
+  get_latlon_from_address:
+    type: function
+    agents: [agent.5]
+    params:
+      description: |-
+        住所から緯度・経度を取得してピンを打つためのツール
+        国土地理院のAPIを使用
+
+        Args:
+            address: 住所文字列・駅名などを入力する
+
+        Returns:
+            dict
+                lat: value
+                lon: value
+            if raised Exception, return empty dict
+  get_nearby_buildings:
+    type: function
+    agents: [agent.5]
+    params:
+      description: |-
+        Google Places APIを使用して周辺建物情報を取得
+
+        Args:
+            lat: 緯度
+            lon: 経度
+            radius: 検索半径（メートル、デフォルト: 1000m）
+            place_type: 建物タイプ (restaurant, hospital, school, bank, etc.)
+            None の場合は指定しない
+
+        Returns:
+            JSON文字列形式の周辺建物情報
+  get_station_coordinates:
+    type: function
+    agents: [agent.2, agent.3, agent.4]
+  hazard_agent:
+    type: agent
+    agents: [agent.5]
+    params:
+      wrapper: AgentTool
+  reachable_station:
+    type: function
+    agents: [agent.1]
+
+teams:
+  agent.5:
+    type: hierarchy
+    agents: [agent.5, advisor_agent, summary_agent]
+
+imports:
+  AgentTool: google.adk.tools.agent_tool.AgentTool
+  Any: typing.Any
+  APIRouter: fastapi.APIRouter
+  asynccontextmanager: contextlib.asynccontextmanager
+  auth: routers.auth
+  BaseModel: pydantic.BaseModel
+  build_advisor_agent: app.services.agents.advisor_agent.build_advisor_agent
+  build_estate_agent: app.services.agents.estate_agent.build_estate_agent
+  build_followup_agent: app.services.agents.followup_agent.build_followup_agent
+  build_hazard_agent: app.services.agents.hazard_agent.build_hazard_agent
+  build_multiple_pin_station_agent: app.services.agents.station_agent.build_multiple_pin_station_agent
+  build_report_agent: app.services.agents.report_agent.build_report_agent
+  build_station_agent: app.services.agents.station_agent.build_station_agent
+  build_suggest_agent: app.services.agents.suggestion_agent.build_suggest_agent
+  build_summary_agent: app.services.agents.summry_agent.build_summary_agent
+  BytesIO: io.BytesIO
+  calculate_commute_time: services.navitime.calculate_commute_time
+  chat: routers.chat
+  check_conversation_if_exist: app.services.global_state.check_conversation_if_exist
+  check_hazard_info: app.services.tools.check_hazard_info.check_hazard_info
+  check_rate_limit: app.routers.middlewares.rate_limit.check_rate_limit
+  commute: routers.commute
+  Content: google.genai.types.Content
+  CORSMiddleware: fastapi.middleware.cors.CORSMiddleware
+  CustomAgent: app.services.agents.custom_agent.CustomAgent
+  DATA_STORES: app.services.global_state.DATA_STORES
+  dataclass: dataclasses.dataclass
+  datetime: datetime.datetime
+  dedent: textwrap.dedent
+  defaultdict: collections.defaultdict
+  Dict: typing.Dict
+  engine: database.engine
+  explore: routers.explore
+  FastAPI: fastapi.FastAPI
+  Field: pydantic.Field
+  field_validator: pydantic.field_validator
+  gemini_search: app.services.tools.gemini_search.gemini_search
+  genai: google.genai
+  get_address_info: services.geocode.get_address_info
+  get_db: database.get_db
+  get_latlon_from_address: app.services.tools.get_latlon_from_address.get_latlon_from_address
+  get_nearby_buildings: app.services.tools.get_nearby_buildings.get_nearby_buildings
+  get_station_coordinates: app.services.tools.map_api.get_station_coordinates
+  hazard: routers.hazard
+  hazard_service: app.services.hazard_service.hazard_service
+  HTTPException: fastapi.HTTPException
+  httpx: httpx
+  Image: PIL.Image
+  init_db: database.init_db
+  InMemoryArtifactService: google.adk.artifacts.InMemoryArtifactService
+  InMemoryMemoryService: google.adk.memory.in_memory_memory_service.InMemoryMemoryService
+  InMemorySessionService: google.adk.sessions.InMemorySessionService
+  json: json
+  List: typing.List
+  LlmAgent: google.adk.agents.llm_agent.LlmAgent
+  logging: logging
+  mercantile: mercantile
+  NavitimeClient: services.navitime.NavitimeClient
+  Optional: typing.Optional
+  os: os
+  Part: google.genai.types.Part
+  pd: pandas
+  pins: routers.pins
+  Property: models.Property
+  PropertyCreate: schemas.PropertyCreate
+  PropertyResponse: schemas.PropertyResponse
+  Query: fastapi.Query
+  random: random
+  reachable_station: app.services.tools.reachable_station.reachable_station
+  ReachableService: app.services.reachable_service.ReachableService
+  Request: fastapi.Request
+  requests: requests
+  Runner: google.adk.runners.Runner
+  SendPin: app.services.send_pin.SendPin
+  SendPinStore: app.services.send_pin.SendPinStore
+  session: routers.session
+  SESSION_SERVICE: app.services.global_state.SESSION_SERVICE
+  stations: routers.stations
+  StreamingResponse: fastapi.responses.StreamingResponse
+  text: sqlalchemy.text
+  ToolContext: google.adk.tools.ToolContext
+  traceback: traceback
+  Tuple: typing.Tuple
+  types: google.genai.types
+  urllib: urllib
+  uvicorn: uvicorn
+
+functions:
+  __init__:
+    type: sync
+    module: app.services.send_pin
+    args: [self]
+    params:
+      returns: None
+  _categorize_by_time:
+    type: sync
+    module: app.services.reachable_service
+    args: [self, stations]
+    params:
+      returns: Dict
+  _filter_with_rent_data:
+    type: sync
+    module: app.services.tools.reachable_station
+    args: [result]
+    params:
+      returns: Dict
+  _generate_after_second_conversations:
+    type: async
+    module: app.routers.chat
+    args: [message, user_id, session_id]
+  _generate_first_conversation:
+    type: async
+    module: app.routers.chat
+    args: [user_message, user_id, session_id]
+  _get_station_code:
+    type: async
+    module: app.services.reachable_service
+    args: [self, station_name]
+    params:
+      returns: Optional[str]
+  _headers:
+    type: sync
+    module: app.services.navitime
+    args: [self]
+    params:
+      returns: Dict
+  _http_get:
+    type: sync
+    module: app.services.navitime
+    args: [self, path, params]
+    params:
+      returns: Dict
+  _labelize_fare:
+    type: sync
+    module: app.services.navitime
+    args: [self, fare]
+    params:
+      returns: Dict
+  _parse_reachable_response:
+    type: sync
+    module: app.services.reachable_service
+    args: [self, data, origin_station, time_limit]
+    params:
+      returns: Dict
+  _parse_sections:
+    type: sync
+    module: app.services.navitime
+    args: [self, sections]
+    params:
+      returns: List[Dict]
+  build_advisor_agent:
+    type: sync
+    module: app.services.agents.advisor_agent
+    params:
+      returns: LlmAgent
+  build_estate_agent:
+    type: sync
+    module: app.services.agents.estate_agent
+    args: [session_service]
+    params:
+      returns: CustomAgent
+  build_followup_agent:
+    type: sync
+    module: app.services.agents.followup_agent
+    args: [session_service]
+    params:
+      returns: CustomAgent
+  build_hazard_agent:
+    type: sync
+    module: app.services.agents.hazard_agent
+    params:
+      returns: LlmAgent
+  build_multiple_pin_station_agent:
+    type: sync
+    module: app.services.agents.station_agent
+    args: [session_service]
+    params:
+      returns: CustomAgent
+  build_report_agent:
+    type: sync
+    module: app.services.agents.report_agent
+    args: [session_service, number]
+    params:
+      returns: CustomAgent
+  build_station_agent:
+    type: sync
+    module: app.services.agents.station_agent
+    args: [session_service]
+    params:
+      returns: CustomAgent
+  build_suggest_agent:
+    type: sync
+    module: app.services.agents.suggestion_agent
+    args: [session_service]
+    params:
+      returns: CustomAgent
+  build_summary_agent:
+    type: sync
+    module: app.services.agents.summry_agent
+    params:
+      returns: LlmAgent
+  calculate_commute_time:
+    type: sync
+    module: app.services.navitime
+    args: [start_location, goal_location, start_time, api_key]
+    params:
+      returns: Dict
+  chat:
+    type: async
+    module: app.routers.chat
+    args: [request, req]
+  check_avalanche_risk:
+    type: sync
+    module: app.services.hazard_service
+    args: [self, lat, lon]
+    params:
+      returns: bool
+  check_conversation_if_exist:
+    type: sync
+    module: app.services.global_state
+    args: [session_service, name, user_id, session_id]
+    params:
+      returns: bool
+  check_hazard_info:
+    type: sync
+    module: app.services.tools.check_hazard_info
+    args: [station_name]
+    params:
+      returns: dict
+  check_landslide_zones:
+    type: sync
+    module: app.services.hazard_service
+    args: [self, lat, lon]
+    params:
+      returns: List[str]
+  create_property:
+    type: async
+    module: app.main
+    args: [property]
+  estimate_flood_risk:
+    type: sync
+    module: app.services.hazard_service
+    args: [self, lat, lon, level]
+    params:
+      returns: str
+  estimate_inland_flood_risk:
+    type: sync
+    module: app.services.hazard_service
+    args: [self, lat, lon]
+    params:
+      returns: str
+  estimate_storm_surge_risk:
+    type: sync
+    module: app.services.hazard_service
+    args: [self, lat, lon]
+    params:
+      returns: str
+  estimate_tsunami_risk:
+    type: sync
+    module: app.services.hazard_service
+    args: [self, lat, lon]
+    params:
+      returns: str
+  extract_pins:
+    type: sync
+    module: app.services.send_pin
+    args: [self, user_id]
+    params:
+      returns: list[str]
+  find_optimal_stations:
+    type: async
+    module: app.services.reachable_service
+    args: [self, station_name, max_travel_time, max_rent, min_rent, rent_data]
+    params:
+      returns: List[Dict]
+  gemini_search:
+    type: sync
+    module: app.services.tools.gemini_search
+    args: [query]
+    params:
+      returns: str
+  geocode_address:
+    type: async
+    module: app.routers.commute
+    args: [address]
+  get_all_risks:
+    type: sync
+    module: app.services.hazard_service
+    args: [self, lat, lon]
+    params:
+      returns: Dict
+  get_batch_commute_times:
+    type: async
+    module: app.routers.commute
+    args: [from_address, to_addresses, start_time]
+  get_commute_ranking:
+    type: async
+    module: app.routers.commute
+    args: [from_address, to_addresses, start_time, sort_by]
+  get_commute_time:
+    type: async
+    module: app.routers.commute
+    args: [from_address, to_address, start_time, use_coordinates]
+  get_latlon_from_address:
+    type: sync
+    module: app.services.tools.get_latlon_from_address
+    args: [address, tool_context]
+    params:
+      returns: str
+  get_nearby_buildings:
+    type: sync
+    module: app.services.tools.get_nearby_buildings
+    args: [lat, lon, radius, place_type, tool_context]
+    params:
+      returns: str
+  get_pixel_from_coords:
+    type: sync
+    module: app.services.hazard_service
+    args: [self, lat, lon, image, tile]
+    params:
+      returns: Tuple
+  get_property:
+    type: async
+    module: app.main
+    args: [property_id]
+  get_reachable_with_rent_info:
+    type: async
+    module: app.services.reachable_service
+    args: [self, station_name, time_limit, rent_data]
+    params:
+      returns: Dict
+  get_route_transit:
+    type: sync
+    module: app.services.navitime
+    args: [self, start, goal, start_time, order, limit, shape]
+    params:
+      returns: Dict
+  get_station_coordinates:
+    type: sync
+    module: app.services.tools.map_api
+    args: [station_name, tool_context]
+    params:
+      returns: str
+  get_station_position:
+    type: sync
+    module: app.services.tools.check_hazard_info
+    args: [station_name]
+    params:
+      returns: tuple
+  get_tile_image:
+    type: sync
+    module: app.services.hazard_service
+    args: [self, url]
+    params:
+      returns: Optional[Image.Image]
+  health_check:
+    type: async
+    module: app.main
+  insert_pins:
+    type: sync
+    module: app.services.send_pin
+    args: [self, user_id, pin]
+    params:
+      returns: None
+  lifespan:
+    type: async
+    module: app.main
+    args: [app]
+  list_properties:
+    type: async
+    module: app.main
+    args: [skip, limit, property_type, status]
+  parse_route_results:
+    type: sync
+    module: app.services.navitime
+    args: [self, data]
+    params:
+      returns: List[Dict]
+  reachable_station:
+    type: async
+    module: app.services.tools.reachable_station
+    args: [station_name, time_limit]
+    params:
+      returns: Dict
+  root:
+    type: async
+    module: app.main
+  sanitize_message:
+    type: sync
+    module: app.routers.chat
+    args: [cls, v]
+  search_reachable_stations:
+    type: async
+    module: app.services.reachable_service
+    args: [self, station_name, time_limit, transport_types, start_time]
+    params:
+      returns: Dict
+  stream:
+    type: async
+    module: app.services.agents.custom_agent
+    args: [self, query, user_id, session_id]
+  validate_session_id:
+    type: sync
+    module: app.routers.chat
+    args: [cls, v]
+
+variables:
+  ENVIRONMENT:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [app.main]
+  GOOGLE_API_KEY:
+    type: env
+    params:
+      caller: [os.environ.get]
+      path: [app.services.tools.gemini_search]
+  GOOGLE_CLOUD_LOCATION:
+    type: env
+    params:
+      caller: [os.environ.get]
+      path: [app.services.tools.gemini_search]
+  GOOGLE_CLOUD_PROJECT:
+    type: env
+    params:
+      caller: [os.environ.get]
+      path: [app.services.tools.gemini_search]
+  GOOGLE_MAPS_API_KEY:
+    type: env
+    params:
+      caller: [os.environ.get]
+      path: [app.services.tools.get_nearby_buildings, app.services.tools.map_api, app.services.tools.check_hazard_info]
+  RAPIDAPI_KEY:
+    type: env
+    params:
+      caller: [os.environ.get, os.getenv]
+      path: [app.services.navitime, app.services.reachable_service]
+
+files:
+  lineinfo.csv:
+    type: pattern
+    actions: [read]
+    params:
+      caller: [os.path.join]
+      pattern: [current_dir, "..", "..", "..", data, lineinfo.csv]
+
+networks:
+  maps.googleapis.com:
+    type: api
+    actions: [GET]
+    urls: [/maps/api/place/nearbysearch/json, /maps/api/geocode/json]
+    protocols: [https]
+    ports: ["443"]
+    params:
+      caller: [get_nearby_buildings, get_station_coordinates, get_station_position]
+  url:
+    type: api
+    actions: [GET]
+    protocols: [https]
+    ports: ["443"]
+    params:
+      pattern: https://{RAPID_HOST}{path}
+      caller: [_http_get]
+      dynamic: "True"
+      variable: url
